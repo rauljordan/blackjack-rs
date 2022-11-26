@@ -1,129 +1,220 @@
-use rand::Rng;
+#[macro_use]
+extern crate lazy_static;
+
+use std::sync::{Arc,Mutex};
 use std::thread;
+use rand::seq::SliceRandom;
+use rand::thread_rng;
+
+use structopt::StructOpt;
+
+mod strategy;
+
+use strategy::BASIC_STRATEGY;
+
+#[derive(Debug, StructOpt)]
+pub struct Opt {
+    // 6 decks for the game (used by Vegas tables).
+    #[structopt(short = "d", default_value = "6")]
+    num_decks: usize,
+    // Number of games to simulate.
+    #[structopt(short = "n", default_value = "10000")]
+    simulation_count: usize,
+}
 
 // Goal: spawn tons of games of blackjack in the background using
-// threads and aggregate the optimal results that won depending on dealer and player ranges.
-// Aggregate the dominant strategies depending on certain game states.
-//
-// TODO: Make the player use actual strategy rather than random moves.
+// threads and aggregate the results that won depending on dealer and player ranges.
+// Observe the performance of the commonly touted "basic strategy" from the results.
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
-    let simulation_count = 10000;
-    println!("Running {} simulations", simulation_count);
-    println!("========");
-    println!("Sample game output...");
-    let mut game = Game::new();
-    game.start();
-    println!("Dealer hand: {:?} = {}", game.dealer_hand, game.dealer_total);
-    println!("Player hand: {:?} = {}", game.player_hand, game.player_total);
-    println!("Player moves: {:?}", game.player_moves);
-    println!("Winner {:?}", game.winner);
-    println!("========");
+    let opts = Opt::from_args();
+    let deck = Deck::new(opts.num_decks);
+    let cards = Arc::new(Mutex::new(deck.cards.into_iter().cycle()));
+
     let mut handlers = vec![];
-    for _ in 0..simulation_count {
+    for _ in 0..opts.simulation_count {
+        let mut cards = cards.clone();
         handlers.push(thread::spawn(move || {
-            let mut game = Game::new();
-            let winner = game.start();
-            (game, winner)
+            let mut game = Game::new(&mut cards);
+            game.start();
+            GameResult::from(game)
         }));
     }
-    let game_results: Vec<(Game, ())> = handlers.into_iter()
+    let game_results: Vec<GameResult> = handlers.into_iter()
         .map(|handler| handler.join().unwrap())
         .collect();
 
-    let mut player_lt_dealer_winner_total = 0;
-    let mut player_lt_dealer_total = 0;
-    let mut player_gt_dealer_winner_total = 0;
-    let mut player_gt_dealer_total= 0;
-    game_results.into_iter().for_each(|game| {
-        let dealer_first = game.0.dealer_hand.first().unwrap();
-        let player_first = game.0.player_hand.first().unwrap();
-        if player_first < dealer_first {
-            if game.0.winner == Some(Agent::Player) {
-                player_lt_dealer_winner_total+= 1;
+    let mut player_w: f64 = 0.0;
+    let mut dealer_w: f64 = 0.0;
+    let mut draw: f64 = 0.0;
+    let tot = game_results.len() as f64;
+    game_results
+        .into_iter()
+        .for_each(|g| {
+            match g.winner {
+                Some(Agent::Player) => player_w += 1.0,
+                Some(Agent::Dealer) => dealer_w += 1.0,
+                None => draw += 1.0,
             }
-            player_lt_dealer_total+= 1;
-        }
-        if player_first > dealer_first {
-            if game.0.winner == Some(Agent::Player) {
-                player_gt_dealer_winner_total+= 1;
-            }
-            player_gt_dealer_total+= 1;
-        }
-    });
-    
-    let player_win_lt_dealer_pct = 100.0 * (player_lt_dealer_winner_total as f64) / (player_lt_dealer_total as f64);
-    let player_win_gt_dealer_pct = 100.0 * (player_gt_dealer_winner_total as f64) / (player_gt_dealer_total as f64);
-    println!("Player won {:.1}% games where player first card > dealer", player_win_gt_dealer_pct);
-    println!("Player won {:.1}% games where player first card < dealer", player_win_lt_dealer_pct);
-    // let mut dealer_gt_player: Vec<(Arc<Game>, Option<Agent>)> = vec!();
-    // let mut equal_values: Vec<(Arc<Game>, Option<Agent>)> = vec!();
-    // Figure out: which move was most successful when the dealer had 
-    // (1) dealer starts with a card > X, us < X
-    // (2) we start with a card > X, dealer < X
-    // println!("Winner {:?}", winner);
-    // println!("{:?} = {}", game.dealer_hand, game.dealer_total);
-    // println!("{:?}", game.player_moves);
-    // println!("{:?} = {}", game.player_hand, game.player_total);
+        });
+
+    println!("********************************************");
+    println!("*                                          *'");
+    println!("* Testing effectiveness of 'basic strategy' *'");
+    println!("*                                          *'");
+    println!("********************************************");
+    println!("Deck size: {}", opts.num_decks);
+    println!("Simulated games: {}", opts.simulation_count);
+    println!("Player wins: {}%", player_w / tot * 100.0);
+    println!("Dealer wins: {}%", dealer_w / tot * 100.0);
+    println!("Ties: {}%", draw / tot * 100.0);
     Ok(())
 }
 
-#[derive(Debug)]
-struct Game {
-    winner: Option<Agent>,
-    dealer_hand: Vec<u8>,
-    player_moves: Vec<Move>,
-    dealer_total: u8,
-    player_hand: Vec<u8>,
-    player_total: u8,
+#[derive(Debug,Clone,Copy)]
+pub enum Card {
+    Two,
+    Three,
+    Four,
+    Five,
+    Six,
+    Seven,
+    Eight,
+    Nine,
+    Ten,
+    J,
+    Q,
+    K,
+    A,
 }
 
+// Turns a card into its u8 representation, as several face cards
+// can all map to 10. For now, treats aces as mapping to 11.
+impl From<&Card> for u8 {
+    fn from(c: &Card) -> Self {
+        match c {
+            Card::Two => 2,
+            Card::Three => 3,
+            Card::Four => 4,
+            Card::Five => 5,
+            Card::Six => 6,
+            Card::Seven => 7,
+            Card::Eight => 8,
+            Card::Nine => 9,
+            Card::Ten => 10,
+            Card::J => 10,
+            Card::Q => 10,
+            Card::K => 10,
+            Card::A => 11,
+        }
+    }
+}
+
+// Creates a deck instance out of an allowed card set and shuffles it.
 #[derive(Debug)]
-enum Move {
+pub struct Deck {
+    cards: Vec<Card>,
+}
+
+impl Deck {
+    pub fn new(num_decks: usize) -> Self {
+        let card_set = [
+            Card::A,
+            Card::Two,
+            Card::Three,
+            Card::Four,
+            Card::Five,
+            Card::Six,
+            Card::Seven,
+            Card::Eight,
+            Card::Nine,
+            Card::Ten,
+            Card::J,
+            Card::Q,
+            Card::K,
+        ];
+        // Create multiple multiple decks if desired.
+        let mut cards: Vec<Card> = card_set
+            .iter()
+            .cycle()
+            .take(card_set.len()*num_decks)
+            .cloned()
+            .collect();
+
+        cards.shuffle(&mut thread_rng());
+        
+        Self {
+            cards,
+        } 
+    }
+    pub fn shuffle(&mut self) {
+        self.cards.shuffle(&mut thread_rng());
+    }
+}
+
+#[derive(Debug,Clone)]
+pub enum Move {
     Double,
     Stand,
     Hit,
 }
 
 #[derive(Debug,PartialEq,Copy,Clone)]
-enum Agent {
+pub enum Agent {
     Dealer,
     Player,
 }
 
-impl Game {
-    pub fn new() -> Self {
-        let dealer_hand = initial_hand();
-        let player_hand = initial_hand();
-        let dealer_total = (&dealer_hand).into_iter().sum();
-        let player_total = (&player_hand).into_iter().sum();
+#[derive(Debug)]
+pub struct Game<'a, T: Iterator> {
+    deck: &'a mut Arc<Mutex<T>>,
+    dealer_hand: Vec<Card>,
+    dealer_total: u8,
+    player_moves: Vec<Move>,
+    player_hand: Vec<Card>,
+    player_total: u8,
+    dealer_beats_player: bool,
+    winner: Option<Agent>,
+}
+
+impl <'a, T> Game<'a, T> where T: Iterator<Item=Card> {
+    pub fn new(
+        cards: &'a mut Arc<Mutex<T>>,
+    ) -> Self {
+        let dealer_hand = take_two(cards);
+        let player_hand = take_two(cards);
+        let dealer_total = u8::from(dealer_hand.first().unwrap());
+        let player_total = hand_sum(&player_hand);
         Self {
+            deck: cards,
             dealer_hand,
             dealer_total,
             player_hand,
             player_total,
             player_moves: vec![],
+            dealer_beats_player: false,
             winner: None,
         }
     }
     pub fn start(&mut self) {
         let mut player_done = false;
+        let mut dealer_revealed = false;
         loop {
             match &self.game_ended() {
                 (false, _) => {
                     // Player moves.
                     if !player_done {
-                        let action = act();
+                        let action = self.act();
                         match action {
                             Move::Hit => {
-                                let card = deal();
+                                let card = self.next_card();
                                 self.player_hand.push(card);
-                                self.player_total += card;
+                                self.player_total += u8::from(&card);
                             },
                             Move::Double => {
-                                let card = deal();
+                                let card = self.next_card();
                                 self.player_hand.push(card);
-                                self.player_total += card;
+                                self.player_total += u8::from(&card);
                                 player_done = true;
                             },
                             Move::Stand => {
@@ -132,10 +223,18 @@ impl Game {
                         }
                         self.player_moves.push(action);
                     } else {
+                        if !dealer_revealed {
+                            self.dealer_total += u8::from(self.dealer_hand.last().unwrap());
+                            dealer_revealed = true;
+                            continue;
+                        }
                         // Dealer moves.
-                        let card = deal();
+                        let card = self.next_card();
                         self.dealer_hand.push(card);
-                        self.dealer_total += card;
+                        self.dealer_total += u8::from(&card);
+                        if self.dealer_total <= 21 && self.dealer_total > self.player_total {
+                            self.dealer_beats_player = true;
+                        }
                     }
                 },
                 (true, None) => {
@@ -149,9 +248,38 @@ impl Game {
             }
         }
     }
+    pub fn next_card(&self) -> Card {
+        let mut deck = self.deck
+            .lock()
+            .unwrap();
+        deck.next().unwrap()
+    }
+    pub fn act(&self) -> Move {
+        let dealer_up_card = u8::from(self.dealer_hand.first().unwrap());
+        let player_sum = hand_sum(&self.player_hand);
+
+        if player_sum < 5 {
+            return Move::Hit;
+        }
+
+        // Always stand if sum > 17.
+        if player_sum > 17 {
+            return Move::Stand;
+        }
+
+        let key = format!("{},{}", player_sum, dealer_up_card);
+        let strat = BASIC_STRATEGY.lock().unwrap();
+        match strat.get(&key.as_str()) {
+            Some(action) => action.clone(),
+            None => panic!("no move found for situation {}", key)
+        }
+    }
     pub fn game_ended(&self) -> (bool, Option<Agent>) {
-        if self.player_total == 21 && self.dealer_total == 21 {
+        if self.player_total == self.dealer_total {
             return (true, None);
+        }
+        if self.dealer_beats_player {
+            return (true, Some(Agent::Dealer)); 
         }
         if self.player_total == 21 {
             return (true, Some(Agent::Player));
@@ -169,21 +297,34 @@ impl Game {
     }
 }
 
-fn act() -> Move {
-    let mut gen = rand::thread_rng();
-    match gen.gen_range(0..3) {
-        0 => Move::Stand,
-        1 => Move::Hit,
-        2 => Move::Double,
-        _ => Move::Stand,
+// Simple summary of the game for displaying to the user.
+pub struct GameResult {
+    dealer_hand: Vec<Card>,
+    player_hand: Vec<Card>,
+    player_moves: Vec<Move>,
+    winner: Option<Agent>,
+}
+
+impl <'a, T> From<Game<'a, T>> for GameResult
+    where T: Iterator<Item=Card> {
+    fn from(g: Game<'a, T>) -> Self {
+        Self {
+            dealer_hand: g.dealer_hand,
+            player_hand: g.player_hand,
+            player_moves: g.player_moves,
+            winner: g.winner,
+        } 
     }
 }
 
-fn deal() -> u8 {
-    let mut gen = rand::thread_rng();
-    gen.gen_range(1..11)
+// Get the sum of cards in hand.
+pub fn hand_sum(hand: &Vec<Card>) -> u8 {
+    hand.into_iter().map(|c| u8::from(c)).sum()
 }
 
-fn initial_hand() -> Vec<u8> {
-    vec![0; 2].into_iter().map(|_| deal()).collect::<Vec<u8>>()
+// Take two cards from the deck iterator.
+pub fn take_two<T: Iterator<Item=Card>>(cards: &mut Arc<Mutex<T>>) -> Vec<Card> {
+    let binding = cards.clone();
+    let mut deck = binding.lock().unwrap();
+    vec![deck.next().unwrap(), deck.next().unwrap()]
 }
