@@ -41,3 +41,4 @@ Ties: 14.12%
 - [ ] Add in bets to calculate RTP
 - [ ] Allow running multiple games for an initial bet and calculate RTP
 - [ ] Each game reuses a same deck, but we should give each game its own shuffled deck
+- [ ] Add soft strats (already includes hard and pair strats)
