@@ -1,7 +1,7 @@
 # Blackjack Rust Simulator
 
 Runs a simulator written in Rust that can spawn N threads of blackjack games where the player
-agent acts according to [basic strategy] and observes the results. It allows for customizing
+agent acts according to [basic strategy](https://www.vegashowto.com/blackjack-basic-strategy) and observes the results. It allows for customizing
 the number of decks used where each deck is a standard, 52 card deck. 
 Basic strategy is known to work well in casinos with good odds, however, deck size can make a difference in the house edge. 
 Currently, the dealer must hit on soft 17 in the simulator, which affects RTP (return-to-player).
