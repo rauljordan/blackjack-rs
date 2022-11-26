@@ -58,11 +58,20 @@ async fn main() -> eyre::Result<()> {
             }
         });
 
-    println!("********************************************");
-    println!("*                                          *'");
-    println!("* Testing effectiveness of 'basic strategy' *'");
-    println!("*                                          *'");
-    println!("********************************************");
+    println!("Blackjack strategy simulator, sample game played:");
+    let mut cards = cards.clone();
+    let mut game = Game::new(&mut cards);
+    game.start();
+    println!("");
+    println!("Winner: {:?}", game.winner);
+    println!("Dealer hand: {:?} = {}", game.dealer_hand, game.dealer_total);
+    println!("Player moves: {:?}", game.player_moves);
+    println!("Player hand: {:?} = {}", game.player_hand, game.player_total);
+    println!("");
+
+    println!("*********************************************");
+    println!("* Testing effectiveness of 'basic strategy' *");
+    println!("*********************************************");
     println!("Deck size: {}", opts.num_decks);
     println!("Simulated games: {}", opts.simulation_count);
     println!("Player wins: {}%", player_w / tot * 100.0);
@@ -152,6 +161,7 @@ impl Deck {
     }
 }
 
+// A valid move a player can make in the game.
 #[derive(Debug,Clone)]
 pub enum Move {
     Double,
@@ -159,12 +169,14 @@ pub enum Move {
     Hit,
 }
 
+// The kinds of players in the game.
 #[derive(Debug,PartialEq,Copy,Clone)]
 pub enum Agent {
     Dealer,
     Player,
 }
 
+// A game instance.
 #[derive(Debug)]
 pub struct Game<'a, T: Iterator> {
     deck: &'a mut Arc<Mutex<T>>,
@@ -258,6 +270,7 @@ impl <'a, T> Game<'a, T> where T: Iterator<Item=Card> {
         let dealer_up_card = u8::from(self.dealer_hand.first().unwrap());
         let player_sum = hand_sum(&self.player_hand);
 
+        // Always hit if < 5.
         if player_sum < 5 {
             return Move::Hit;
         }
@@ -299,9 +312,9 @@ impl <'a, T> Game<'a, T> where T: Iterator<Item=Card> {
 
 // Simple summary of the game for displaying to the user.
 pub struct GameResult {
-    dealer_hand: Vec<Card>,
-    player_hand: Vec<Card>,
-    player_moves: Vec<Move>,
+    _dealer_hand: Vec<Card>,
+    _player_hand: Vec<Card>,
+    _player_moves: Vec<Move>,
     winner: Option<Agent>,
 }
 
@@ -309,9 +322,9 @@ impl <'a, T> From<Game<'a, T>> for GameResult
     where T: Iterator<Item=Card> {
     fn from(g: Game<'a, T>) -> Self {
         Self {
-            dealer_hand: g.dealer_hand,
-            player_hand: g.player_hand,
-            player_moves: g.player_moves,
+            _dealer_hand: g.dealer_hand,
+            _player_hand: g.player_hand,
+            _player_moves: g.player_moves,
             winner: g.winner,
         } 
     }
