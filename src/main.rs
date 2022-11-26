@@ -65,8 +65,8 @@ async fn main() -> eyre::Result<()> {
     println!("");
     println!("Winner: {:?}", game.winner);
     println!("Dealer hand: {:?} = {}", game.dealer_hand, game.dealer_total);
-    println!("Player moves: {:?}", game.player_moves);
-    println!("Player hand: {:?} = {}", game.player_hand, game.player_total);
+    println!("Player move(s): {:?}", game.player_moves);
+    println!("Player hand(s): {:?} = {}", game.player_hands, game.player_total);
     println!("");
 
     println!("*********************************************");
@@ -80,7 +80,7 @@ async fn main() -> eyre::Result<()> {
     Ok(())
 }
 
-#[derive(Debug,Clone,Copy)]
+#[derive(Debug,PartialEq,Clone,Copy)]
 pub enum Card {
     Two,
     Three,
@@ -167,6 +167,7 @@ pub enum Move {
     Double,
     Stand,
     Hit,
+    Split,
 }
 
 // The kinds of players in the game.
@@ -183,7 +184,7 @@ pub struct Game<'a, T: Iterator> {
     dealer_hand: Vec<Card>,
     dealer_total: u8,
     player_moves: Vec<Move>,
-    player_hand: Vec<Card>,
+    player_hands: (Vec<Card>, Vec<Card>),
     player_total: u8,
     dealer_beats_player: bool,
     winner: Option<Agent>,
@@ -201,7 +202,7 @@ impl <'a, T> Game<'a, T> where T: Iterator<Item=Card> {
             deck: cards,
             dealer_hand,
             dealer_total,
-            player_hand,
+            player_hands: (player_hand, vec![]),
             player_total,
             player_moves: vec![],
             dealer_beats_player: false,
@@ -220,12 +221,27 @@ impl <'a, T> Game<'a, T> where T: Iterator<Item=Card> {
                         match action {
                             Move::Hit => {
                                 let card = self.next_card();
-                                self.player_hand.push(card);
+                                self.player_hands.0.push(card);
                                 self.player_total += u8::from(&card);
                             },
                             Move::Double => {
                                 let card = self.next_card();
-                                self.player_hand.push(card);
+                                self.player_hands.0.push(card);
+                                self.player_total += u8::from(&card);
+                                player_done = true;
+                            },
+                            Move::Split => {
+                                // Pop a card from the hand and push it to the second hand.
+                                let splitter = self.player_hands.0.pop().unwrap();
+                                self.player_hands.1.push(splitter);
+
+                                // Hit both hands.
+                                let card = self.next_card();
+                                self.player_hands.0.push(card);
+                                let card = self.next_card();
+                                self.player_hands.1.push(card);
+
+                                // End the player action.
                                 self.player_total += u8::from(&card);
                                 player_done = true;
                             },
@@ -244,6 +260,8 @@ impl <'a, T> Game<'a, T> where T: Iterator<Item=Card> {
                         let card = self.next_card();
                         self.dealer_hand.push(card);
                         self.dealer_total += u8::from(&card);
+
+                        // TODO: Consider split.
                         if self.dealer_total <= 21 && self.dealer_total > self.player_total {
                             self.dealer_beats_player = true;
                         }
@@ -268,7 +286,20 @@ impl <'a, T> Game<'a, T> where T: Iterator<Item=Card> {
     }
     pub fn act(&self) -> Move {
         let dealer_up_card = u8::from(self.dealer_hand.first().unwrap());
-        let player_sum = hand_sum(&self.player_hand);
+        let player_sum = hand_sum(&self.player_hands.0);
+
+        // Do cards match? If so, then determine pair strategy.
+        let has_pair = self.player_hands.0.windows(2).all(|c| c[0] == c[1]);
+        if self.player_hands.0.len() == 2 && has_pair {
+            let hand = &self.player_hands.0;
+            let first = u8::from(hand.first().unwrap());
+            let key = format!("{},{},{}", first, first, dealer_up_card);
+            let strat = BASIC_STRATEGY.lock().unwrap();
+            match strat.get(&key.as_str()) {
+                Some(action) => return action.clone(),
+                None => panic!("no move found for key {}", key)
+            }
+        }
 
         // Always hit if < 5.
         if player_sum < 5 {
@@ -288,6 +319,10 @@ impl <'a, T> Game<'a, T> where T: Iterator<Item=Card> {
         }
     }
     pub fn game_ended(&self) -> (bool, Option<Agent>) {
+        // Special rules if we have a split.
+        if self.player_hands.1.len() > 0 {
+            // TODO: Add logic...
+        }
         if self.player_total == self.dealer_total {
             return (true, None);
         }
@@ -313,7 +348,7 @@ impl <'a, T> Game<'a, T> where T: Iterator<Item=Card> {
 // Simple summary of the game for displaying to the user.
 pub struct GameResult {
     _dealer_hand: Vec<Card>,
-    _player_hand: Vec<Card>,
+    _player_hands: (Vec<Card>, Vec<Card>),
     _player_moves: Vec<Move>,
     winner: Option<Agent>,
 }
@@ -323,7 +358,7 @@ impl <'a, T> From<Game<'a, T>> for GameResult
     fn from(g: Game<'a, T>) -> Self {
         Self {
             _dealer_hand: g.dealer_hand,
-            _player_hand: g.player_hand,
+            _player_hands: g.player_hands,
             _player_moves: g.player_moves,
             winner: g.winner,
         } 

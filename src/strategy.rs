@@ -8,7 +8,9 @@ lazy_static! {
     // and the dealer up card separated by a comma.
     pub static ref BASIC_STRATEGY: Arc<Mutex<HashMap<&'static str, Move>>> = {
         let m = [
-            // Dealer up 2.
+            // ************************
+            // Hard strats! Dealer up 2.
+            // ************************
             ("5,2", Move::Hit),
             ("6,2", Move::Hit),
             ("7,2", Move::Hit),
@@ -148,6 +150,108 @@ lazy_static! {
             ("15,11", Move::Hit),
             ("16,11", Move::Stand),
             ("17,11", Move::Stand),
+            // ************************
+            // Pair strats! Dealer up 2.
+            // ************************
+            ("2,2,2", Move::Hit),
+            ("3,3,2", Move::Hit),
+            ("4,4,2", Move::Hit),
+            ("5,5,2", Move::Double),
+            ("6,6,2", Move::Split),
+            ("7,7,2", Move::Split),
+            ("8,8,2", Move::Split),
+            ("9,9,2", Move::Split),
+            ("10,10,2", Move::Stand),
+            // Dealer up 3.
+            ("2,2,3", Move::Hit),
+            ("3,3,3", Move::Hit),
+            ("4,4,3", Move::Hit),
+            ("5,5,3", Move::Double),
+            ("6,6,3", Move::Split),
+            ("7,7,3", Move::Split),
+            ("8,8,3", Move::Split),
+            ("9,9,3", Move::Split),
+            ("10,10,3", Move::Stand),
+            // Dealer up 4.
+            ("2,2,4", Move::Split),
+            ("3,3,4", Move::Split),
+            ("4,4,4", Move::Hit),
+            ("5,5,4", Move::Double),
+            ("6,6,4", Move::Split),
+            ("7,7,4", Move::Split),
+            ("8,8,4", Move::Split),
+            ("9,9,4", Move::Split),
+            ("10,10,4", Move::Stand),
+            // Dealer up 5.
+            ("2,2,5", Move::Split),
+            ("3,3,5", Move::Split),
+            ("4,4,5", Move::Hit),
+            ("5,5,5", Move::Double),
+            ("6,6,5", Move::Split),
+            ("7,7,5", Move::Split),
+            ("8,8,5", Move::Split),
+            ("9,9,5", Move::Split),
+            ("10,10,5", Move::Stand),
+            // Dealer up 6.
+            ("2,2,6", Move::Split),
+            ("3,3,6", Move::Split),
+            ("4,4,6", Move::Hit),
+            ("5,5,6", Move::Double),
+            ("6,6,6", Move::Split),
+            ("7,7,6", Move::Split),
+            ("8,8,6", Move::Split),
+            ("9,9,6", Move::Split),
+            ("10,10,6", Move::Stand),
+            // Dealer up 7.
+            ("2,2,7", Move::Split),
+            ("3,3,7", Move::Split),
+            ("4,4,7", Move::Hit),
+            ("5,5,7", Move::Double),
+            ("6,6,7", Move::Split),
+            ("7,7,7", Move::Split),
+            ("8,8,7", Move::Split),
+            ("9,9,7", Move::Stand),
+            ("10,10,7", Move::Stand),
+            // Dealer up 8.
+            ("2,2,8", Move::Hit),
+            ("3,3,8", Move::Hit),
+            ("4,4,8", Move::Hit),
+            ("5,5,8", Move::Hit),
+            ("6,6,8", Move::Hit),
+            ("7,7,8", Move::Hit),
+            ("8,8,8", Move::Split),
+            ("9,9,8", Move::Split),
+            ("10,10,8", Move::Stand),
+            // Dealer up 9.
+            ("2,2,9", Move::Hit),
+            ("3,3,9", Move::Hit),
+            ("4,4,9", Move::Hit),
+            ("5,5,9", Move::Hit),
+            ("6,6,9", Move::Hit),
+            ("7,7,9", Move::Hit),
+            ("8,8,9", Move::Split),
+            ("9,9,9", Move::Split),
+            ("10,10,9", Move::Stand),
+            // Dealer up 10.
+            ("2,2,10", Move::Hit),
+            ("3,3,10", Move::Hit),
+            ("4,4,10", Move::Hit),
+            ("5,5,10", Move::Hit),
+            ("6,6,10", Move::Hit),
+            ("7,7,10", Move::Hit),
+            ("8,8,10", Move::Split),
+            ("9,9,10", Move::Stand),
+            ("10,10,10", Move::Stand),
+            // Dealer up 11.
+            ("2,2,11", Move::Hit),
+            ("3,3,11", Move::Hit),
+            ("4,4,11", Move::Hit),
+            ("5,5,11", Move::Hit),
+            ("6,6,11", Move::Hit),
+            ("7,7,11", Move::Hit),
+            ("8,8,11", Move::Split),
+            ("9,9,11", Move::Stand),
+            ("10,10,11", Move::Stand),
         ].iter().cloned().collect();
         Arc::new(Mutex::new(m))
     };
